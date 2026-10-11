@@ -7,7 +7,7 @@ import { LEVELS, levelName, loadPresets } from './presets.js';
 import { renderPractice } from './practice.js';
 import { renderReadingList, renderReader } from './reading.js';
 import { renderPodcastList, renderEpisode } from './podcast.js';
-import { esc, shuffle } from './util.js';
+import { esc, shuffle, fold } from './util.js';
 import { initThemeToggle } from './theme.js';
 
 const app = document.getElementById('app');
@@ -159,8 +159,10 @@ async function renderHub() {
 // Decks: list of decks
 // ---------------------------------------------------------------------------
 
-// Level filter on the decks page; kept while the app is open.
+// Level filter and card search on the decks page; kept while the app is open,
+// so going back from a search result shows the same results.
 let homeLevel = '';
+let cardQuery = '';
 
 async function renderDecks() {
   const [decks, cards] = await Promise.all([db.getDecks(), db.getAllCards()]);
@@ -169,6 +171,16 @@ async function renderDecks() {
   decks.forEach((d) => { if (d.level) counts[d.level] = (counts[d.level] || 0) + 1; });
   if (homeLevel && !counts[homeLevel]) homeLevel = '';
   const shown = homeLevel ? decks.filter((d) => d.level === homeLevel) : decks;
+  if (!cards.length) cardQuery = '';
+
+  const deckList = () => `
+    ${Object.keys(counts).length ? levelChips(homeLevel, counts) : ''}
+    ${shown.length
+      ? `<div class="deck-grid">${shown
+          .map((d) => deckTile(d, cards.filter((c) => c.deckId === d.id), now))
+          .join('')}</div>`
+      : `<p class="empty">Henüz bir desten yok. Kendi desteni oluştur ya da
+          <a href="#/library">seviyene uygun hazır bir deste ekle</a>.</p>`}`;
 
   app.innerHTML = `
     <section class="page-head">
@@ -180,13 +192,21 @@ async function renderDecks() {
       <select name="level" aria-label="Seviye">${levelOptions('')}</select>
       <button class="btn primary">Deste oluştur</button>
     </form>
-    ${Object.keys(counts).length ? levelChips(homeLevel, counts) : ''}
-    ${shown.length
-      ? `<div class="deck-grid">${shown
-          .map((d) => deckTile(d, cards.filter((c) => c.deckId === d.id), now))
-          .join('')}</div>`
-      : `<p class="empty">Henüz bir desten yok. Kendi desteni oluştur ya da
-          <a href="#/library">seviyene uygun hazır bir deste ekle</a>.</p>`}`;
+    ${cards.length ? `
+      <input type="search" id="card-search" value="${esc(cardQuery)}"
+        placeholder="🔍 Kartlarda ara (kelime ya da anlamı)" aria-label="Kartlarda ara">` : ''}
+    <div id="deck-body"></div>`;
+
+  const body = app.querySelector('#deck-body');
+  const showBody = () => {
+    body.innerHTML = cardQuery.trim() ? searchResults(cardQuery, cards, decks, now) : deckList();
+  };
+  showBody();
+
+  app.querySelector('#card-search')?.addEventListener('input', (e) => {
+    cardQuery = e.target.value;
+    showBody();
+  });
 
   app.querySelector('#new-deck').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -196,12 +216,63 @@ async function renderDecks() {
     location.hash = `#/deck/${deck.id}`;
   });
 
-  app.querySelector('.chips')?.addEventListener('click', (e) => {
+  body.addEventListener('click', (e) => {
     const chip = e.target.closest('[data-level]');
     if (!chip) return;
     homeLevel = chip.dataset.level;
     renderDecks();
   });
+}
+
+// ---------------------------------------------------------------------------
+// Card search: finds a word or meaning across all decks
+// ---------------------------------------------------------------------------
+
+const SEARCH_LIMIT = 100;
+
+function searchResults(query, cards, decks, now) {
+  const q = fold(query.trim());
+  const deckById = new Map(decks.map((d) => [d.id, d]));
+  // Exact word first, then words that start with the query, then the rest.
+  const rank = (c) => {
+    const front = fold(c.front);
+    return front === q ? 0 : front.startsWith(q) ? 1 : front.includes(q) ? 2 : 3;
+  };
+  const hits = cards
+    .filter((c) => fold(c.front).includes(q) || fold(c.back).includes(q))
+    .map((c) => ({ card: c, rank: rank(c) }))
+    .sort((a, b) => a.rank - b.rank || a.card.front.localeCompare(b.card.front, 'en'))
+    .map((h) => h.card);
+
+  if (!hits.length) return `<p class="empty">“${esc(query.trim())}” için kart bulunamadı.</p>`;
+  return `
+    <p class="muted small search-count">
+      ${hits.length.toLocaleString('tr')} kart bulundu${hits.length > SEARCH_LIMIT ? `, ilk ${SEARCH_LIMIT} tanesi gösteriliyor` : ''}
+    </p>
+    <ul class="card-list">
+      ${hits.slice(0, SEARCH_LIMIT).map((c) => searchRow(c, deckById.get(c.deckId), q, now)).join('')}
+    </ul>`;
+}
+
+// Escapes text and marks the first place the (folded) query appears in it.
+function highlight(text, q) {
+  const i = fold(text).indexOf(q);
+  if (i === -1) return esc(text);
+  return `${esc(text.slice(0, i))}<mark>${esc(text.slice(i, i + q.length))}</mark>${esc(text.slice(i + q.length))}`;
+}
+
+function searchRow(c, deck, q, now) {
+  return `
+    <li class="card-row">
+      <div class="card-text">
+        <span class="front">${highlight(c.front, q)}</span>
+        <span class="back">${highlight(c.back, q)}</span>
+      </div>
+      <div class="card-meta">
+        <a class="search-deck" href="#/deck/${c.deckId}">${levelBadge(deck?.level)} ${esc(deck?.name ?? '')}</a>
+        <span class="muted small">Tekrar: ${dueLabel(c, now)}</span>
+      </div>
+    </li>`;
 }
 
 function deckTile(deck, cards, now) {

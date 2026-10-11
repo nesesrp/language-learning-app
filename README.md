@@ -12,6 +12,7 @@ A flashcard app for learning vocabulary with spaced repetition.
 - **CEFR levels:** every deck can have a level (A1, A2, B1, B2, C1, C2). The home page can be filtered by level
 - **Ready-made decks:** the "Hazır" page has about 9,800 English → Turkish words in 230+ decks, split by level, then by topic (e.g. "Yiyecek ve İçecek") or by part of speech ("Fiiller 1", "Fiiller 2"…). Pick your level and add a deck, or all decks of that level, with one click. See [Word lists](#word-lists)
 - **Cards:** add, edit and delete cards with a word on the front and its meaning on the back
+- **Card search:** the "Desteler" page searches the words and meanings of all cards at once. It ignores case and accents, so "ogrenmek" finds "öğrenmek". Exact matches come first, and each result links to its deck
 - **Study mode:** flip the card and answer "Bildim" (knew it) or "Bilemedim" (didn't know). Keyboard shortcuts: `Space` flips the card, `1` means "Bilemedim", `2` means "Bildim"
 - **Spaced repetition:** uses the Leitner box system. A card you know comes back after 1, 3, 7, 16 and then 35 days. A card you miss goes back to the first box and shows up again later in the same session
 - **Progress:** cards learned, daily streak, longest streak and activity for the last 14 days

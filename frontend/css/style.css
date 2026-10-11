@@ -266,6 +266,14 @@ input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
 .card-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
 .row-actions { display: flex; }
 
+/* --- Card search --- */
+
+#card-search { width: 100%; margin-top: 12px; }
+.search-count { margin: 20px 0 8px; }
+.card-row mark { background: var(--warn-bg); color: inherit; border-radius: 3px; }
+.search-deck { color: var(--text); text-decoration: none; font-size: 0.9rem; }
+.search-deck:hover { color: var(--primary); }
+
 /* --- Study mode --- */
 
 .study-head { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
