@@ -113,7 +113,16 @@ npm start      # http://localhost:3000, serves the API and the frontend
 npm test       # API tests, each with a fresh in-memory database
 ```
 
-The data is stored in `backend/data/wordcards.db` (not committed). `PORT` and `DB_PATH` environment variables change the port and the database file.
+The data is stored in `backend/data/wordcards.db` (not committed). `PORT` and `DB_PATH` environment variables change the port and the database file. The schema is versioned (`PRAGMA user_version`) and an older database file is upgraded when the server starts.
+
+### Accounts
+
+Every user has their own decks, cards, activity and settings. Users register with an email and a password (at least 8 characters), and every `/api` endpoint outside `/api/auth` needs a login; without one it answers `401`. Another user's deck or card answers `404`, the same as a missing one.
+
+- **Passwords** are hashed with scrypt (`node:crypto`), with a random salt per user.
+- **Sessions** last 30 days and are kept in an `HttpOnly`, `SameSite=Lax` cookie (`wordcards_session`). The database only stores a SHA-256 hash of each session token. Changing the password logs out every other device.
+- **Data from before accounts** belongs to nobody after the upgrade; the first account to register gets it.
+- **Deleting an account** deletes all of its data.
 
 ### Structure
 
@@ -123,9 +132,11 @@ backend/
   src/
     server.js       # starts the server (PORT, DB_PATH)
     app.js          # Express app: API under /api, frontend as static files
-    db.js           # SQLite connection, schema and row mapping
+    db.js           # SQLite connection, schema migrations and row mapping
+    auth.js         # password hashing, sessions, login check
     validate.js     # request validation and HTTP errors
     routes/
+      auth.js       # register, login, logout, password, account deletion
       decks.js      # decks, cards of a deck, ready-made deck import
       cards.js      # editing cards and study answers
       stats.js      # activity and streaks
@@ -141,6 +152,12 @@ Requests and responses are JSON, with the same objects the frontend stores (`{ i
 
 | Method | Endpoint                 | Description                          |
 | ------ | ------------------------ | ------------------------------------ |
+| POST   | `/api/auth/register`     | Create an account and log in (`{ email, password }`) |
+| POST   | `/api/auth/login`        | Log in (`{ email, password }`)       |
+| POST   | `/api/auth/logout`       | Log out                              |
+| GET    | `/api/auth/me`           | The logged-in user (`{ id, email, createdAt }`) |
+| POST   | `/api/auth/password`     | Change the password (`{ currentPassword, newPassword }`) |
+| DELETE | `/api/auth/me`           | Delete the account and all its data (`{ password }`) |
 | GET    | `/api/decks`             | List decks, newest first             |
 | POST   | `/api/decks`             | Create a deck (`{ name, level? }`)   |
 | GET    | `/api/decks/:id`         | Get a deck                           |
@@ -157,12 +174,12 @@ Requests and responses are JSON, with the same objects the frontend stores (`{ i
 | GET    | `/api/stats`             | Activity per day, today's count, current and longest streak |
 | GET    | `/api/settings`          | Get all settings                     |
 | PATCH  | `/api/settings`          | Merge fields into the settings       |
-| GET    | `/api/backup`            | Download everything (same format as the frontend's backup file) |
-| POST   | `/api/backup`            | Replace everything with a backup     |
+| GET    | `/api/backup`            | Download the user's data (same format as the frontend's backup file) |
+| POST   | `/api/backup`            | Replace the user's data with a backup |
 
-**Frontend migration:** only `frontend/js/storage.js` needs to change. Its functions are already async, so their bodies will be replaced with `fetch('/api/...')` calls and the rest of the UI code stays as it is. Existing data can be moved over with a backup file.
+**Frontend migration:** `frontend/js/storage.js` needs to change, plus a login/register screen. The storage functions are already async, so their bodies will be replaced with `fetch('/api/...')` calls and the rest of the UI code stays as it is. Existing data can be moved over with a backup file.
 
-**Later:** user accounts (so each user has their own decks), and importing/exporting decks.
+**Later:** limiting failed login attempts, password reset by email, and importing/exporting single decks.
 
 ## Reading texts
 

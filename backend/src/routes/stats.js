@@ -7,7 +7,7 @@ export default function statsRouter(db) {
   const router = Router();
 
   router.get('/stats', (req, res) => {
-    const activity = getActivity(db);
+    const activity = getActivity(db, req.user.id);
     res.json({
       activity,
       today: activity[dateKey()] || 0,
@@ -22,8 +22,8 @@ export default function statsRouter(db) {
     const { count = 1 } = body(req);
     if (!Number.isInteger(count) || count < 1) throw new HttpError(400, '"count" pozitif bir tam sayı olmalı.');
     const day = dateKey();
-    addActivity(db, day, count);
-    res.json({ day, count: getActivity(db)[day] });
+    addActivity(db, req.user.id, day, count);
+    res.json({ day, count: getActivity(db, req.user.id)[day] });
   });
 
   return router;

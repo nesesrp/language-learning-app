@@ -8,6 +8,8 @@ import cardsRouter from './routes/cards.js';
 import statsRouter from './routes/stats.js';
 import settingsRouter from './routes/settings.js';
 import backupRouter from './routes/backup.js';
+import authRouter from './routes/auth.js';
+import { requireUser } from './auth.js';
 import { HttpError } from './validate.js';
 
 const FRONTEND_DIR = fileURLToPath(new URL('../../frontend/', import.meta.url));
@@ -18,6 +20,9 @@ export function createApp(db) {
   app.use(express.json({ limit: '20mb' }));
 
   const api = express.Router();
+  api.use(authRouter(db));
+  // Everything below needs a logged-in user (req.user).
+  api.use(requireUser(db));
   for (const router of [decksRouter, cardsRouter, statsRouter, settingsRouter, backupRouter]) {
     api.use(router(db));
   }

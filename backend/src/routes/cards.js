@@ -7,19 +7,25 @@ import { HttpError, notFound, text, body } from '../validate.js';
 export default function cardsRouter(db) {
   const router = Router();
 
-  const findCard = (id) => {
-    const row = db.prepare('SELECT * FROM cards WHERE id = ?').get(id);
+  // Only the user's own cards are found; anyone else's answer 404.
+  const findCard = (id, userId) => {
+    const row = db.prepare(`
+      SELECT cards.* FROM cards JOIN decks ON decks.id = cards.deck_id
+      WHERE cards.id = ? AND decks.user_id = ?`).get(id, userId);
     if (!row) throw notFound('Kart');
     return toCard(row);
   };
 
   router.get('/cards', (req, res) => {
-    res.json(db.prepare('SELECT * FROM cards ORDER BY rowid').all().map(toCard));
+    const rows = db.prepare(`
+      SELECT cards.* FROM cards JOIN decks ON decks.id = cards.deck_id
+      WHERE decks.user_id = ? ORDER BY cards.rowid`).all(req.user.id);
+    res.json(rows.map(toCard));
   });
 
   router.patch('/cards/:id', (req, res) => {
     const fields = body(req);
-    const card = findCard(req.params.id);
+    const card = findCard(req.params.id, req.user.id);
     if ('front' in fields) card.front = text(fields.front, 'Kelime');
     if ('back' in fields) card.back = text(fields.back, 'Anlam');
     db.prepare('UPDATE cards SET front = ?, back = ? WHERE id = ?').run(card.front, card.back, card.id);
@@ -27,7 +33,9 @@ export default function cardsRouter(db) {
   });
 
   router.delete('/cards/:id', (req, res) => {
-    const { changes } = db.prepare('DELETE FROM cards WHERE id = ?').run(req.params.id);
+    const { changes } = db.prepare(`
+      DELETE FROM cards WHERE id = ? AND deck_id IN (SELECT id FROM decks WHERE user_id = ?)`)
+      .run(req.params.id, req.user.id);
     if (!changes) throw notFound('Kart');
     res.status(204).end();
   });
@@ -38,12 +46,12 @@ export default function cardsRouter(db) {
     const { knew } = body(req);
     if (typeof knew !== 'boolean') throw new HttpError(400, '"knew" true ya da false olmalı.');
     const now = Date.now();
-    const card = review(findCard(req.params.id), knew, now);
+    const card = review(findCard(req.params.id, req.user.id), knew, now);
     db.transaction(() => {
       db.prepare(`
         UPDATE cards SET box = ?, due = ?, reviews = ?, lapses = ?, last_reviewed = ? WHERE id = ?`)
         .run(card.box, card.due, card.reviews, card.lapses, card.lastReviewed, card.id);
-      addActivity(db, dateKey(now), 1);
+      addActivity(db, req.user.id, dateKey(now), 1);
     })();
     res.json(card);
   });
