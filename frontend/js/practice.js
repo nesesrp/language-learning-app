@@ -1,5 +1,5 @@
-// Practice modes that reuse the user's cards: writing, listening, dictation,
-// speaking and a matching game. They don't change the spaced repetition schedule; each answer
+// Practice modes that reuse the user's cards: writing, fill in the blank,
+// listening, dictation, speaking and a matching game. They don't change the spaced repetition schedule; each answer
 // only counts towards today's activity (and so the streak).
 
 import * as db from './storage.js';
@@ -10,10 +10,25 @@ import { homophones } from './homophones.js';
 const ROUND = 10;
 const PAIRS = 6;
 
+// Modes that share a page and are switched with tabs.
+const WRITING_TABS = { label: 'Yazma türü', modes: [['writing', 'Kelimeyi yaz'], ['fill', 'Cümleyi tamamla']] };
+const LISTENING_TABS = { label: 'Dinleme türü', modes: [['listening', 'Anlamını seç'], ['dictation', 'Duyduğunu yaz']] };
+
+// `prepare` (optional) narrows the pool before a round, `need` then says what's missing.
 export const MODES = {
-  writing: { title: 'Writing', intro: 'Türkçe anlamı gör, İngilizcesini yaz.', min: 1, run: writing },
-  listening: { title: 'Listening', intro: 'Kelimeyi dinle, doğru anlamı seç.', min: 4, run: listening },
-  dictation: { title: 'Listening', intro: 'Kelimeyi dinle, duyduğunu yaz.', min: 1, run: dictation },
+  writing: { title: 'Writing', intro: 'Türkçe anlamı gör, İngilizcesini yaz.', min: 1, tabs: WRITING_TABS, run: writing },
+  fill: {
+    title: 'Writing', intro: 'Cümledeki boşluğa gelen kelimeyi yaz.', min: 1, tabs: WRITING_TABS,
+    prepare: withSentences, need: 'örnek cümlesi olan en az 1 kelime (örnek cümleler hazır destelerdeki kelimeler için var)',
+    note: `
+      <p class="muted small note">
+        Cümleler: <a href="https://github.com/nishkalavallabhi/OneStopEnglishCorpus" target="_blank" rel="noopener">OneStopEnglish corpus</a>,
+        <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a>.
+      </p>`,
+    run: fill,
+  },
+  listening: { title: 'Listening', intro: 'Kelimeyi dinle, doğru anlamı seç.', min: 4, tabs: LISTENING_TABS, run: listening },
+  dictation: { title: 'Listening', intro: 'Kelimeyi dinle, duyduğunu yaz.', min: 1, tabs: LISTENING_TABS, run: dictation },
   speaking: { title: 'Speaking', intro: 'Kelimeyi sesli söyle; telaffuzun anlaşılıyor mu, görelim.', min: 1, run: speaking },
   game: { title: 'Game', intro: 'Kelimeleri anlamlarıyla eşleştir; ne kadar hızlı, o kadar iyi.', min: PAIRS, run: game },
 };
@@ -45,7 +60,7 @@ export async function renderPractice(root, mode) {
   const config = MODES[mode];
   const [decks, cards, settings] = await Promise.all([db.getDecks(), db.getAllCards(), db.getSettings()]);
   const deckId = decks.some((d) => d.id === settings.practiceDeck) ? settings.practiceDeck : '';
-  const pool = distinct(shuffle(cards.filter((c) => !deckId || c.deckId === deckId)));
+  let pool = distinct(shuffle(cards.filter((c) => !deckId || c.deckId === deckId)));
 
   root.innerHTML = `
     <a href="#/" class="back">← Ana sayfa</a>
@@ -59,13 +74,14 @@ export async function renderPractice(root, mode) {
           </option>`).join('')}
       </select>
     </section>
-    ${mode === 'listening' || mode === 'dictation' ? `
-      <nav class="chips" aria-label="Dinleme türü">
-        <a class="chip ${mode === 'listening' ? 'active' : ''}" href="#/practice/listening">Anlamını seç</a>
-        <a class="chip ${mode === 'dictation' ? 'active' : ''}" href="#/practice/dictation">Duyduğunu yaz</a>
+    ${config.tabs ? `
+      <nav class="chips" aria-label="${config.tabs.label}">
+        ${config.tabs.modes.map(([m, name]) => `
+          <a class="chip ${m === mode ? 'active' : ''}" href="#/practice/${m}">${name}</a>`).join('')}
       </nav>` : ''}
     <p class="muted">${config.intro}</p>
-    <div id="practice"></div>`;
+    <div id="practice"></div>
+    ${config.note ?? ''}`;
 
   root.querySelector('#practice-deck').addEventListener('change', async (e) => {
     await db.saveSettings({ practiceDeck: e.target.value });
@@ -82,9 +98,17 @@ export async function renderPractice(root, mode) {
     el.innerHTML = `<p class="empty">Tarayıcın konuşma tanımayı desteklemiyor. Chrome, Edge ya da Safari'yi dene.</p>`;
     return null;
   }
+  if (config.prepare) {
+    try {
+      pool = await config.prepare(pool);
+    } catch {
+      el.innerHTML = `<p class="empty">Cümleler yüklenemedi. Sayfayı yenileyip tekrar dene.</p>`;
+      return null;
+    }
+  }
   if (pool.length < config.min) {
     el.innerHTML = `
-      <p class="empty">Bu mod için en az ${config.min} farklı kelime gerekiyor${deckId ? ' (bu destede yeterli değil)' : ''}.</p>
+      <p class="empty">Bu mod için ${config.need ?? `en az ${config.min} farklı kelime`} gerekiyor${deckId ? ' (bu destede yeterli değil)' : ''}.</p>
       <p class="center"><a class="btn primary" href="#/library">Hazır deste ekle</a></p>`;
     return null;
   }
@@ -235,6 +259,152 @@ function writing(el, pool) {
         `<span class="muted">İpucu: ${esc(word[0])}${' _'.repeat(word.length - 1)} (${word.length} harf)</span>`;
       el.querySelector('input').focus();
     }
+  }
+
+  el.addEventListener('submit', onSubmit);
+  const stop = listen(el, onClick);
+  start();
+  return () => {
+    el.removeEventListener('submit', onSubmit);
+    stop();
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Fill in the blank: see a sentence from the reading texts with the word left
+// out, type the missing word
+// ---------------------------------------------------------------------------
+
+let sentenceData = null;
+
+// { sentences, words: { word: [[sentence number, start, end]] } }, built by
+// scripts/build-sentences.mjs.
+function loadSentences() {
+  sentenceData ??= fetch('data/sentences.json')
+    .then((res) => {
+      if (!res.ok) throw new Error(`sentences.json: HTTP ${res.status}`);
+      return res.json();
+    })
+    .catch((err) => {
+      sentenceData = null; // allow a retry on the next visit
+      throw err;
+    });
+  return sentenceData;
+}
+
+// Gives each card its example sentences and leaves out the cards that have none.
+async function withSentences(pool) {
+  const { sentences, words } = await loadSentences();
+  return pool.flatMap((card) => {
+    const examples = answers(card.front).flatMap((w) => words[w] ?? [])
+      .map(([n, start, end]) => ({ text: sentences[n], start, end }));
+    return examples.length ? [{ ...card, examples }] : [];
+  });
+}
+
+function fill(el, pool) {
+  let queue, i, score, checked, missed, example;
+
+  // The word as it is written in the sentence ("went" for a "go" card).
+  const gapWord = () => example.text.slice(example.start, example.end);
+
+  const sentenceHtml = (gap) => `
+    ${esc(example.text.slice(0, example.start))}${gap}${esc(example.text.slice(example.end))}`;
+
+  function start() {
+    queue = shuffle([...pool]).slice(0, ROUND);
+    i = 0;
+    score = 0;
+    missed = [];
+    show();
+  }
+
+  function show() {
+    if (i >= queue.length) {
+      el.innerHTML = result(scoreEmoji(score, queue.length), `${score} / ${queue.length}`,
+        'Kelimeleri cümle içinde görmek, nasıl kullanıldıklarını öğretir.', missed);
+      return;
+    }
+    checked = false;
+    const card = queue[i];
+    example = card.examples[Math.floor(Math.random() * card.examples.length)];
+    el.innerHTML = `
+      ${progress(i, queue.length)}
+      <div class="prompt-card">
+        <span class="hint">Türkçesi</span>
+        <strong>${esc(card.back)}</strong>
+        <p class="sentence">${sentenceHtml('<span class="gap" aria-label="boşluk">_____</span>')}</p>
+      </div>
+      <form class="answer-form" autocomplete="off">
+        <input name="answer" placeholder="Boşluğa gelen kelime" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Cevabın">
+        <button class="btn primary">Kontrol et</button>
+      </form>
+      <div class="feedback" aria-live="polite"></div>
+      <p class="center practice-help">
+        <button type="button" class="btn small" data-action="hint">İpucu</button>
+        <button type="button" class="btn small" data-action="skip">Bilmiyorum</button>
+      </p>`;
+    el.querySelector('input').focus();
+  }
+
+  // `skipped`: the user pressed "Bilmiyorum", so there is nothing to compare.
+  async function check(skipped = false) {
+    const card = queue[i];
+    const input = el.querySelector('input');
+    if (!skipped && !input.value.trim()) return;
+    checked = true;
+    const typed = normalize(input.value);
+    const ok = !skipped && typed === normalize(gapWord());
+    // The card's word, but not in the form the sentence needs ("go" for "went").
+    const baseForm = !skipped && !ok && answers(card.front).includes(typed);
+    if (ok || baseForm) score++;
+    else missed.push(card);
+    input.readOnly = true;
+    el.querySelector('.answer-form .btn').textContent = 'Devam →';
+    el.querySelector('.practice-help').hidden = true;
+    el.querySelector('.sentence').innerHTML = sentenceHtml(`<mark class="filled">${esc(gapWord())}</mark>`);
+    const meaning = `<p class="muted">${esc(card.front)} = ${esc(card.back)}</p>`;
+    if (ok) {
+      el.querySelector('.feedback').innerHTML = `<span class="ok">✓ Doğru!</span>${meaning}`;
+    } else if (baseForm) {
+      el.querySelector('.feedback').innerHTML = `
+        <span class="ok">✓ Doğru kelime!</span>
+        <p>Bu cümlede <strong>${esc(gapWord())}</strong> hâliyle geçiyor.</p>${meaning}`;
+    } else if (skipped) {
+      el.querySelector('.feedback').innerHTML = `
+        <span class="bad">Doğrusu: <strong>${esc(gapWord())}</strong></span>${meaning}`;
+      el.querySelector('.answer-form .btn').focus();
+    } else {
+      const { typed: mine, expected } = diff(input.value, gapWord());
+      el.querySelector('.feedback').innerHTML = `
+        <div class="dictation-diff">
+          <span class="muted small">Senin yazdığın</span><span class="word">${mine}</span>
+          <span class="muted small">Doğrusu</span><span class="word">${expected}</span>
+        </div>
+        ${meaning}`;
+    }
+    speak(example.text);
+    await db.logActivity();
+  }
+
+  function onSubmit(e) {
+    e.preventDefault();
+    if (!checked) check();
+    else { i++; show(); }
+  }
+
+  function onClick(e) {
+    const btn = e.target.closest('[data-action]');
+    const action = btn?.dataset.action;
+    if (action === 'restart') start();
+    else if (action === 'say') speak(btn.dataset.text);
+    else if (checked) return;
+    else if (action === 'hint') {
+      const word = normalize(gapWord());
+      el.querySelector('.feedback').innerHTML =
+        `<span class="muted">İpucu: ${esc(word[0])}${' _'.repeat(word.length - 1)} (${word.length} harf)</span>`;
+      el.querySelector('input').focus();
+    } else if (action === 'skip') check(true);
   }
 
   el.addEventListener('submit', onSubmit);

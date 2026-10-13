@@ -5,7 +5,7 @@ A flashcard app for learning vocabulary with spaced repetition.
 ## Features
 
 - **Home page:** the entry point to every way of practising: Kelime (Vocabulary), Yazma (Writing), Dinleme (Listening), Konuşma (Speaking), Okuma (Reading), Podcast and Oyun (Game)
-- **Practice modes:** use your own cards, from all decks or one deck. *Writing:* see the Turkish meaning, type the English word. *Listening:* hear the word (browser speech synthesis, no audio files) and either pick its meaning or type what you heard (dictation). Dictation has slow replay, a hint and an "I don't know" button, accepts words that sound the same (e.g. *their* for *there*), and after a wrong answer marks the extra and missing letters. Both listening modes list the missed words at the end of a round. *Speaking:* see a word and say it out loud; the browser's speech recognition checks whether it was understood. It is lenient about extra words ("an apple") and words that sound the same, and gives three tries per word, with a button to hear the word first. Speech recognition works in Chrome, Edge and Safari (Chrome and Edge need an internet connection, because the audio is recognized on their servers). *Game:* match words with their meanings against the clock. Practice doesn't change the spaced repetition schedule but counts towards the daily streak
+- **Practice modes:** use your own cards, from all decks or one deck. *Writing:* see the Turkish meaning, type the English word. *Fill in the blank* (a tab of Writing): see a sentence from the reading texts with the word left out and its Turkish meaning, type the missing word. The form the sentence needs is expected ("went" for *go*), but the dictionary form is accepted with a note. Example sentences exist for about 4,500 words of the ready-made decks, so cards without one are left out. *Listening:* hear the word (browser speech synthesis, no audio files) and either pick its meaning or type what you heard (dictation). Dictation has slow replay, a hint and an "I don't know" button, accepts words that sound the same (e.g. *their* for *there*), and after a wrong answer marks the extra and missing letters. Both listening modes list the missed words at the end of a round. *Speaking:* see a word and say it out loud; the browser's speech recognition checks whether it was understood. It is lenient about extra words ("an apple") and words that sound the same, and gives three tries per word, with a button to hear the word first. Speech recognition works in Chrome, Edge and Safari (Chrome and Edge need an internet connection, because the audio is recognized on their servers). *Game:* match words with their meanings against the clock. Practice doesn't change the spaced repetition schedule but counts towards the daily streak
 - **Reading:** 189 news texts, each in three versions (Kolay, Orta, Zor) with an estimated CEFR level. Tap a word to see its meaning from the word list (inflected forms like "went" or "cities" are found too) and add it to the "Okuma Kelimeleri" deck. Words already in your decks are underlined. The text can be read aloud sentence by sentence, and finished texts are marked as read. See [Reading texts](#reading-texts)
 - **Podcast:** 10 short episodes (A1–B2) in which two hosts, Sam and Alex, talk about everyday topics. They are read aloud with two different browser voices, so there are no audio files. The transcript starts hidden; its words can be tapped like on the reading page and added to the "Podcast Kelimeleri" deck. Playback can go back or forward a sentence, start from any line and run at 0.75x, 1x or 1.25x. Each episode ends with comprehension questions. The episodes are written for this app and live in `frontend/data/podcasts.json`
 - **Decks:** create, rename and delete decks (e.g. "English Verbs", "Spanish Food")
@@ -40,7 +40,7 @@ frontend/
   index.html
   css/style.css
   js/app.js       # routing and views (UI)
-  js/practice.js  # writing, listening, dictation, speaking and matching game modes
+  js/practice.js  # writing, fill in the blank, listening, dictation, speaking and matching game modes
   js/speech.js    # English pronunciation and speech recognition (Web Speech API)
   js/reading.js   # reading page: texts, reading aloud
   js/podcast.js   # podcast page: episodes, player, questions
@@ -55,9 +55,11 @@ frontend/
   js/presets.js   # CEFR levels; loads the ready-made decks
   data/wordlist.json  # ready-made decks (generated, see below)
   data/texts/         # reading texts (generated, see below)
+  data/sentences.json # example sentences for fill in the blank (generated, see below)
   data/podcasts.json  # podcast episodes (hand-written)
 scripts/
   build-wordlist.mjs  # builds frontend/data/wordlist.json
+  build-sentences.mjs # builds frontend/data/sentences.json
   build-texts.mjs     # builds frontend/data/texts/
   overrides.json      # hand-made translation fixes
 ```
@@ -195,3 +197,13 @@ What the script does:
 - **Estimates a CEFR level** for each version: the lowest level whose words make up 97% of the words that are in the CEFR-J / Octanove lists. Names and topic words that aren't in the lists are left out. The "easy" versions come out mostly B1, the "hard" ones mostly B2
 - **Writes** `index.json` (titles, summaries, levels, word counts) and one file per text, so the reading page only loads what is being read
 
+
+### Example sentences
+
+`frontend/data/sentences.json` holds the example sentences of the fill-in-the-blank mode. They are taken from the reading texts, so they are under CC BY-SA 4.0 as well. To rebuild it after the word list or the texts change:
+
+```bash
+node scripts/build-sentences.mjs
+```
+
+The script keeps sentences of 6–22 words, finds the words of the ready-made decks in them the same way the reading page does ("went" → *go*, but "letter" stays *letter*), skips names ("Apple" the company is not *apple*) and keeps the three shortest sentences per word, preferring the easier text versions. It stores where the word is in each sentence, so the app only has to hide that part.

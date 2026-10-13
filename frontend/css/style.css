@@ -527,6 +527,9 @@ a.hub-tile:active { transform: translateY(-1px); }
 }
 .prompt-card .hint { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; }
 .prompt { margin: 0; font-size: 1.6rem; font-weight: 600; overflow-wrap: anywhere; }
+.sentence { margin: 0; max-width: 36em; font-size: 1.3rem; line-height: 1.6; overflow-wrap: anywhere; }
+.sentence .gap { color: var(--primary); font-weight: 600; letter-spacing: 0.1em; }
+.sentence mark.filled { padding: 0 3px; border-radius: 4px; background: var(--ok-bg); color: var(--ok-text); font-weight: 600; }
 .answer-form { display: flex; gap: 8px; }
 .answer-form input { flex: 1; font-size: 1.1rem; }
 .answer-form input[readonly] { background: var(--surface-2); }

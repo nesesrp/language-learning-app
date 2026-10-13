@@ -44,7 +44,7 @@ const levelChips = (active, counts, { all = true } = {}) => `
 const routes = [
   [/^#\/?$/, renderHub],
   [/^#\/decks$/, renderDecks],
-  [/^#\/practice\/(writing|listening|dictation|speaking|game)$/, async (mode) => {
+  [/^#\/practice\/(writing|fill|listening|dictation|speaking|game)$/, async (mode) => {
     cleanup = await renderPractice(app, mode);
   }],
   [/^#\/reading$/, async () => {
